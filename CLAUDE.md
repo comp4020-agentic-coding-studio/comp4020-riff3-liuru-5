@@ -27,6 +27,38 @@ the cutoff, the private-repo phase, the weekly `start` skill and the
 reflection are all done, and none of it governs what you do here. Read it for
 how they worked, not for what you owe.
 
+## Live riff workflow
+
+This is a short, live classroom riff. Optimise for rapid, visible iteration,
+not long planning.
+
+- Treat every short, informal instruction ("make this more obvious", "this
+  feels boring") as design intent to translate into a concrete engineering
+  change yourself. Don't ask the user to rewrite feedback as a spec; ask only
+  when different interpretations would materially change the riff.
+- Keep one clear answer in mind: what new direction does this riff take the
+  original prototype? Prefer one strong conceptual move over general
+  polishing, unrelated refactors, or finishing the original author's
+  to-do list. Keep `git diff riff-start` focused enough that the direction is
+  obvious at share-back.
+- Work in small green checkpoints: interpret, make the smallest coherent
+  change, inspect the rendered result when visual behaviour changed, run the
+  fastest relevant validation, commit, push, continue. Aim for a useful
+  checkpoint roughly every five minutes of active work --- but never push a
+  knowingly broken state just to hit that rhythm; get back to green first,
+  then push.
+- For small visual changes, reach for the fastest useful check (rendered
+  inspection, a quick browser look, a targeted test) before reaching for the
+  full suite. Before a larger checkpoint, or before declaring the riff done,
+  run `pnpm check` and keep `spec/invariants.test.ts` green.
+- `spec/assignment-1.test.ts` encodes the original author's Assignment 1
+  contract, not this riff's direction. If the riff intentionally moves past
+  that contract, update or delete the obsolete assertions rather than forcing
+  the new design back into the old brief.
+- Avoid unnecessary dependencies, unrelated refactors, and long explanations.
+  Default to implementation over explanation, and never silently undo the
+  user's latest design decision.
+
 ---
 
 # COMP4020 prototype
