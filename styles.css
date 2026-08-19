@@ -99,6 +99,12 @@ section {
   color: var(--ink-soft);
 }
 
+.unify-line {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vermilion-dim);
+}
+
 .station {
   padding: 1.5rem;
   border: 1px solid var(--line);
@@ -108,6 +114,13 @@ section {
 
 .station h2 span[lang="zh"] {
   color: var(--vermilion-dim);
+}
+
+.station-caption {
+  margin: 0.6rem 0 0;
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--ink-soft);
 }
 
 button {
