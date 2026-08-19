@@ -116,12 +116,38 @@
       <section class="station" aria-labelledby="shadow-heading" data-testid="station-shadow">
         <h2 id="shadow-heading"><span lang="zh">影</span> &middot; A shadow</h2>
         <p>
-          Move the light with the arrow keys (or drag it). Then try to grab the shadow
+          Move the light with the arrow keys &mdash; left and right to swing it, up and
+          down to raise and lower it (or just drag it). Then try to grab the shadow
           itself.
         </p>
         <div class="shadow-stage" id="shadow-stage" data-testid="shadow-stage" tabindex="0">
+          <div class="shadow-floor"></div>
+          <svg class="shadow-canvas" id="shadow-canvas" aria-hidden="true" focusable="false">
+            <defs>
+              <!-- Runs along the shadow's own axis (endpoints set per frame in
+                   userSpaceOnUse), so the umbra is darkest at the feet and gone
+                   by the tip, the way a real penumbra opens out with distance. -->
+              <linearGradient id="shadow-falloff" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#181509" stop-opacity="0.55" />
+                <stop offset="0.45" stop-color="#181509" stop-opacity="0.34" />
+                <stop offset="1" stop-color="#181509" stop-opacity="0.04" />
+              </linearGradient>
+              <filter id="shadow-penumbra" x="-25%" y="-200%" width="150%" height="500%">
+                <feGaussianBlur id="shadow-penumbra-blur" stdDeviation="2" />
+              </filter>
+              <filter id="shadow-contact-blur" x="-60%" y="-200%" width="220%" height="500%">
+                <feGaussianBlur stdDeviation="2.4" />
+              </filter>
+            </defs>
+            <path id="shadow-umbra" fill="url(#shadow-falloff)" filter="url(#shadow-penumbra)" d="" />
+            <!-- Contact shadow: the small dark pool right where the object meets
+                 the floor. It is what stops a correct projection from floating. -->
+            <ellipse id="shadow-contact" filter="url(#shadow-contact-blur)" />
+            <!-- Unfiltered transparent twin of the same geometry: grabbing at the
+                 shadow hit-tests against the shape, not the blurred raster. -->
+            <path id="shadow-cast" data-testid="shadow-cast" d="" />
+          </svg>
           <div class="shadow-object" id="shadow-object"></div>
-          <div class="shadow-cast" id="shadow-cast" data-testid="shadow-cast"></div>
           <div class="shadow-light" id="shadow-light"></div>
         </div>
         <p class="station-caption">
@@ -158,7 +184,55 @@
       <section class="station" aria-labelledby="lightning-heading" data-testid="station-lightning">
         <h2 id="lightning-heading"><span lang="zh">電</span> &middot; Lightning</h2>
         <p>Strike it, then replay in slow motion. Slow motion doesn't buy you a middle.</p>
-        <div class="lightning-stage" id="lightning-stage" data-testid="lightning-stage"></div>
+        <div class="lightning-stage" id="lightning-stage" data-testid="lightning-stage">
+          <svg
+            class="lightning-sky"
+            id="lightning-sky"
+            viewBox="0 0 400 160"
+            preserveAspectRatio="xMidYMid slice"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <defs>
+              <linearGradient id="lightning-night" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#171432" />
+                <stop offset="0.62" stop-color="#0f0d22" />
+                <stop offset="1" stop-color="#08070f" />
+              </linearGradient>
+              <radialGradient id="lightning-halo">
+                <stop offset="0" stop-color="#d9dcff" stop-opacity="0.85" />
+                <stop offset="1" stop-color="#7f86d8" stop-opacity="0" />
+              </radialGradient>
+              <filter id="lightning-bloom" x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="3.2" />
+              </filter>
+              <filter id="lightning-cloud-edge" x="-30%" y="-60%" width="160%" height="260%">
+                <feGaussianBlur stdDeviation="7" />
+              </filter>
+            </defs>
+            <rect width="400" height="160" fill="url(#lightning-night)" />
+            <g id="lightning-clouds" filter="url(#lightning-cloud-edge)" opacity="0.65">
+              <ellipse cx="90" cy="34" rx="86" ry="26" fill="#241f47" />
+              <ellipse cx="215" cy="20" rx="104" ry="24" fill="#1d1a3c" />
+              <ellipse cx="330" cy="38" rx="80" ry="22" fill="#272250" />
+            </g>
+            <!-- The ambient flash: the whole sky lifting, which is what you
+                 actually see of a strike before you find the channel. -->
+            <rect id="lightning-flash" width="400" height="160" fill="#cfd2ff" opacity="0" />
+            <ellipse id="lightning-halo-shape" cx="200" cy="60" rx="120" ry="90"
+              fill="url(#lightning-halo)" opacity="0" />
+            <g id="lightning-bolt" opacity="0">
+              <path id="lightning-bloom-path" d="" filter="url(#lightning-bloom)" />
+              <path id="lightning-branch-path" d="" />
+              <path id="lightning-core-path" d="" />
+            </g>
+            <path
+              id="lightning-horizon"
+              d="M0 160 L0 132 L34 124 L62 130 L96 112 L134 126 L170 118 L214 128 L252 116 L296 127 L338 120 L370 129 L400 122 L400 160 Z"
+              fill="#05040a"
+            />
+          </svg>
+        </div>
         <p class="station-caption">It flashes into being and vanishes in an instant.</p>
         <button type="button" id="lightning-strike" data-testid="lightning-strike">
           Strike

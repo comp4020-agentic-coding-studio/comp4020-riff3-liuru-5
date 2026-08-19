@@ -130,6 +130,20 @@ function initIllusion(): void {
   });
 }
 
+// Sound is synthesised, not loaded: there is no clip to 404 on the deployed
+// path, and the blow tone has to rise over whatever lifetime this particular
+// bubble drew, which a fixed-length file can't do.
+let audioCtx: AudioContext | undefined;
+
+function getAudio(): AudioContext | undefined {
+  if (typeof AudioContext === "undefined") return undefined;
+  // Built lazily, inside the pointerdown/keydown that starts a blow, so
+  // autoplay policy lets it run. A browser that refuses just stays silent.
+  audioCtx ??= new AudioContext();
+  if (audioCtx.state === "suspended") void audioCtx.resume();
+  return audioCtx;
+}
+
 function initBubble(): void {
   const bubble = document.querySelector<HTMLElement>("#bubble");
   const blowButton = document.querySelector<HTMLButtonElement>("#bubble-blow");
@@ -141,6 +155,61 @@ function initBubble(): void {
   let growTimer: number | undefined;
   let popAt = 0;
   let popped = false;
+  // Distinct from `growTimer`: it says a blow is genuinely in progress, so a
+  // stray pointerup or keyup landing on the button can't pop a bubble that was
+  // never blown (and can't tax the tally for it).
+  let blowing = false;
+  let breath: { osc: OscillatorNode; gain: GainNode } | undefined;
+
+  // A sine rising 160→520Hz across exactly this bubble's lifetime, so the pitch
+  // is a second read-out of the scale the circle is already drawing.
+  function startBreath(ctx: AudioContext, lifetimeMs: number): void {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const now = ctx.currentTime;
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.linearRampToValueAtTime(520, now + lifetimeMs / 1000);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.06, now + 0.09);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    breath = { osc, gain };
+  }
+
+  function stopBreath(ctx: AudioContext): void {
+    if (!breath) return;
+    const { osc, gain } = breath;
+    breath = undefined;
+    const now = ctx.currentTime;
+    // Ramped to zero rather than stopped dead: cutting a running oscillator
+    // mid-cycle is an audible click.
+    gain.gain.cancelScheduledValues(now);
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.02);
+    osc.stop(now + 0.04);
+  }
+
+  function playPop(ctx: AudioContext): void {
+    const length = Math.floor(ctx.sampleRate * 0.09);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    for (let i = 0; i < length; i += 1) {
+      // Noise under a steep decay — the whole burst is gone inside 90ms, which
+      // is what makes it read as a pop rather than a hiss.
+      samples[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 7;
+    }
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    const band = ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = 950;
+    band.Q.value = 1.1;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5;
+    source.connect(band).connect(gain).connect(ctx.destination);
+    source.start(ctx.currentTime);
+  }
 
   function reset(): void {
     popped = false;
@@ -159,15 +228,25 @@ function initBubble(): void {
 
   function pop(): void {
     stopGrowing();
-    if (popped) return;
+    if (popped || !blowing) return;
     popped = true;
+    blowing = false;
+    const ctx = getAudio();
+    if (ctx) {
+      stopBreath(ctx);
+      playPop(ctx);
+    }
     tally();
     bubbleEl.classList.add("popped");
     noteEl.textContent = "However carefully you held it, it popped anyway.";
   }
 
   function startBlowing(): void {
+    if (blowing) return;
+    blowing = true;
     reset();
+    const ctx = getAudio();
+    if (ctx) startBreath(ctx, popAt);
     const start = performance.now();
     growTimer = window.setInterval(() => {
       const elapsed = performance.now() - start;
@@ -198,50 +277,140 @@ function initBubble(): void {
   });
 }
 
+// The shadow is projected, not drawn: every frame casts a ray from the lamp
+// past the object's two top corners onto the floor line, and the quad between
+// those rays is the shadow. Nothing about the shape is authored, which is the
+// whole point of the station — there is no shadow object, only geometry left
+// over from where the light isn't.
 function initShadow(): void {
   const stage = document.querySelector<HTMLElement>("#shadow-stage");
   const light = document.querySelector<HTMLElement>("#shadow-light");
-  const cast = document.querySelector<HTMLElement>("#shadow-cast");
+  const object = document.querySelector<HTMLElement>("#shadow-object");
+  const umbra = document.querySelector<SVGPathElement>("#shadow-umbra");
+  const cast = document.querySelector<SVGPathElement>("#shadow-cast");
+  const contact = document.querySelector<SVGEllipseElement>("#shadow-contact");
+  const falloff = document.querySelector<SVGLinearGradientElement>("#shadow-falloff");
+  const penumbra = document.querySelector<SVGFEGaussianBlurElement>("#shadow-penumbra-blur");
   const note = document.querySelector<HTMLElement>("#shadow-note");
-  if (!stage || !light || !cast || !note) return;
+  if (!stage || !light || !object || !umbra || !cast || !falloff || !penumbra || !note) return;
+  if (!contact) return;
   const stageEl = stage;
-  const lightEl = light;
+  const objectEl = object;
+  const umbraEl = umbra;
   const castEl = cast;
+  const contactEl = contact;
+  const falloffEl = falloff;
+  const penumbraEl = penumbra;
+  const noteEl = note;
 
-  let lightX = 20;
-  const STEP = 6;
+  // Percentages of the stage, so the lamp survives a resize. The Y ceiling
+  // keeps the lamp above the object's own head: at or below it the projection
+  // inverts (the shadow would fly upward to infinity), which is real physics
+  // but reads as a bug.
+  let lightX = 22;
+  let lightY = 15;
+  const STEP = 5;
+  const MIN_X = 5;
+  const MAX_X = 95;
+  const MIN_Y = 5;
+  const MAX_Y = 34;
 
   function render(): void {
-    lightEl.style.left = `${lightX}%`;
-    const offset = (50 - lightX) * 1.1;
-    castEl.style.transform = `translateX(${offset}%)`;
+    const stageW = stageEl.clientWidth;
+    const stageH = stageEl.clientHeight;
+    const lampX = (lightX / 100) * stageW;
+    const lampY = (lightY / 100) * stageH;
+
+    stageEl.style.setProperty("--light-x", `${lightX}%`);
+    stageEl.style.setProperty("--light-y", `${lightY}%`);
+
+    // Measured, not assumed: CSS owns the object's size, this owns the optics.
+    const objW = objectEl.offsetWidth;
+    const objH = objectEl.offsetHeight;
+    const objX = objectEl.offsetLeft;
+    const floorY = objectEl.offsetTop + objH;
+
+    // Similar triangles. A ray from the lamp through a point at the object's
+    // height lands on the floor scaled by height / (lampHeight - height).
+    const lampHeight = Math.max(floorY - lampY, objH * 1.15);
+    const scale = lampHeight / (lampHeight - objH);
+    const project = (x: number): number => lampX + (x - lampX) * scale;
+    const tipX = project(objX);
+    const length = Math.abs(tipX - objX);
+    const away = tipX >= objX ? 1 : -1;
+
+    // The 2D scene has no depth, so the floor plane is faked with thickness:
+    // the shadow is a lozenge as wide as the object's feet at one end and as
+    // wide as the projected top edge at the other.
+    const nearHalf = objW * 0.28;
+    const farHalf = Math.min(nearHalf * scale, stageH * 0.14);
+    const sweep = away > 0 ? 1 : 0;
+    const d = [
+      `M ${objX} ${floorY - nearHalf}`,
+      `L ${tipX} ${floorY - farHalf}`,
+      `A ${farHalf * 1.15} ${farHalf} 0 0 ${sweep} ${tipX} ${floorY + farHalf}`,
+      `L ${objX} ${floorY + nearHalf}`,
+      `A ${nearHalf * 1.15} ${nearHalf} 0 0 ${sweep} ${objX} ${floorY - nearHalf}`,
+      "Z",
+    ].join(" ");
+    umbraEl.setAttribute("d", d);
+    castEl.setAttribute("d", d);
+
+    contactEl.setAttribute("cx", String(objX + away * objW * 0.16));
+    contactEl.setAttribute("cy", String(floorY));
+    contactEl.setAttribute("rx", String(objW * 0.56));
+    contactEl.setAttribute("ry", String(nearHalf * 0.8));
+
+    // Gradient along the shadow's own axis. The floor is at least a couple of
+    // object-widths of run-out even when the shadow is short, or a lamp
+    // straight overhead would collapse the gradient onto a point and paint the
+    // whole shape in the final (transparent) stop.
+    const reach = Math.max(length * 1.45 + farHalf, objW * 3);
+    falloffEl.setAttribute("x1", String(objX));
+    falloffEl.setAttribute("y1", String(floorY));
+    falloffEl.setAttribute("x2", String(objX + away * reach));
+    falloffEl.setAttribute("y2", String(floorY));
+
+    // Far from the lamp the edge goes soft and the whole thing goes weak —
+    // the two cues that separate a cast shadow from a sticker of one.
+    penumbraEl.setAttribute("stdDeviation", String(Math.min(0.9 + length * 0.018, 7)));
+    umbraEl.style.opacity = String(Math.max(0.48, 1 - length / (stageW * 2.6)));
+
+    // Light the object from wherever the lamp actually is: 0deg is "to top" in
+    // a CSS gradient, so this points the dark end directly away from it.
+    const angle = (Math.atan2(objX - lampX, lampY - (floorY - objH / 2)) * 180) / Math.PI;
+    objectEl.style.setProperty("--lit-angle", `${angle.toFixed(1)}deg`);
   }
 
-  function moveLight(delta: number): void {
-    lightX = Math.min(90, Math.max(10, lightX + delta));
+  function moveLight(deltaX: number, deltaY: number): void {
+    lightX = Math.min(MAX_X, Math.max(MIN_X, lightX + deltaX));
+    lightY = Math.min(MAX_Y, Math.max(MIN_Y, lightY + deltaY));
     render();
   }
 
   function updateFromPointer(event: PointerEvent): void {
     const rect = stageEl.getBoundingClientRect();
-    const percent = ((event.clientX - rect.left) / rect.width) * 100;
-    lightX = Math.min(90, Math.max(10, percent));
+    lightX = Math.min(MAX_X, Math.max(MIN_X, ((event.clientX - rect.left) / rect.width) * 100));
+    lightY = Math.min(MAX_Y, Math.max(MIN_Y, ((event.clientY - rect.top) / rect.height) * 100));
     render();
   }
 
-  stage.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowLeft") {
-      moveLight(-STEP);
-      event.preventDefault();
-    }
-    if (event.key === "ArrowRight") {
-      moveLight(STEP);
-      event.preventDefault();
-    }
+  const ARROWS: Record<string, [number, number]> = {
+    ArrowLeft: [-STEP, 0],
+    ArrowRight: [STEP, 0],
+    ArrowUp: [0, -STEP],
+    ArrowDown: [0, STEP],
+  };
+
+  stageEl.addEventListener("keydown", (event) => {
+    const delta = ARROWS[event.key];
+    if (!delta) return;
+    moveLight(delta[0], delta[1]);
+    event.preventDefault();
   });
 
   let dragging = false;
-  stage.addEventListener("pointerdown", (event) => {
+  stageEl.addEventListener("pointerdown", (event) => {
     dragging = true;
     updateFromPointer(event);
   });
@@ -252,11 +421,18 @@ function initShadow(): void {
     dragging = false;
   });
 
-  cast.addEventListener("click", () => {
+  // Grabbing at the shadow must not double as moving the lamp: the one gesture
+  // aimed at the shadow itself is the one that has to come back empty.
+  castEl.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  castEl.addEventListener("click", () => {
     tally();
-    note.textContent = "Nothing there. It's just where the light doesn't reach.";
+    noteEl.textContent = "Nothing there. It's just where the light doesn't reach.";
   });
 
+  // Geometry is in pixels, so it has to be recomputed whenever the box changes.
+  new ResizeObserver(() => render()).observe(stageEl);
   render();
 }
 
@@ -295,31 +471,160 @@ function initDew(): void {
   });
 }
 
+// A bolt is generated per strike (never the same channel twice) and played
+// through an intensity envelope of three return strokes, which is what makes
+// the flicker read as lightning rather than as a light switch. Slow motion
+// replays the identical event at 1/8 speed — the point of the station is that
+// stretching it doesn't hand you a middle to hold, and reusing one envelope for
+// both speeds is what makes that claim honest rather than staged.
+const LIGHTNING_HORIZON = 118;
+const LIGHTNING_MS = 260;
+const LIGHTNING_STROKES = [
+  { at: 0, amp: 1, decay: 46 },
+  { at: 78, amp: 0.6, decay: 32 },
+  { at: 138, amp: 0.85, decay: 60 },
+];
+
+function boltIntensity(t: number): number {
+  let peak = 0;
+  for (const stroke of LIGHTNING_STROKES) {
+    if (t < stroke.at) continue;
+    peak = Math.max(peak, stroke.amp * Math.exp(-(t - stroke.at) / stroke.decay));
+  }
+  return peak;
+}
+
+// Returns the main channel and its forks separately: they are stroked at
+// different weights, the way a real channel outruns what branches off it.
+function drawBolt(): { channel: string; forks: string; midX: number } {
+  let x = 80 + Math.random() * 240;
+  let y = -8;
+  const lean = (Math.random() - 0.5) * 7;
+  const channel = [`M ${x.toFixed(1)} ${y.toFixed(1)}`];
+  const nodes: { x: number; y: number }[] = [];
+
+  while (y < LIGHTNING_HORIZON) {
+    y = Math.min(y + 7 + Math.random() * 12, LIGHTNING_HORIZON);
+    x = Math.min(384, Math.max(16, x + lean + (Math.random() - 0.5) * 26));
+    channel.push(`L ${x.toFixed(1)} ${y.toFixed(1)}`);
+    nodes.push({ x, y });
+  }
+
+  const forks: string[] = [];
+  const count = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < count; i += 1) {
+    // Forks leave from the upper channel; one splitting a step above the
+    // ground looks like a mistake rather than a fork.
+    const node = nodes[Math.floor(Math.random() * Math.max(nodes.length - 3, 1))];
+    if (!node) continue;
+    let fx = node.x;
+    let fy = node.y;
+    const away = Math.random() < 0.5 ? -1 : 1;
+    const parts = [`M ${fx.toFixed(1)} ${fy.toFixed(1)}`];
+    const steps = 2 + Math.floor(Math.random() * 4);
+    for (let step = 0; step < steps; step += 1) {
+      fx += away * (5 + Math.random() * 15);
+      fy += 4 + Math.random() * 11;
+      parts.push(`L ${fx.toFixed(1)} ${fy.toFixed(1)}`);
+    }
+    forks.push(parts.join(" "));
+  }
+
+  const midX = nodes[Math.floor(nodes.length / 2)]?.x ?? 200;
+  return { channel: channel.join(" "), forks: forks.join(" "), midX };
+}
+
 function initLightning(): void {
-  const stage = document.querySelector<HTMLElement>("#lightning-stage");
+  const bolt = document.querySelector<SVGGElement>("#lightning-bolt");
+  const bloom = document.querySelector<SVGPathElement>("#lightning-bloom-path");
+  const core = document.querySelector<SVGPathElement>("#lightning-core-path");
+  const branch = document.querySelector<SVGPathElement>("#lightning-branch-path");
+  const flash = document.querySelector<SVGRectElement>("#lightning-flash");
+  const halo = document.querySelector<SVGEllipseElement>("#lightning-halo-shape");
   const strikeButton = document.querySelector<HTMLButtonElement>("#lightning-strike");
   const replayButton = document.querySelector<HTMLButtonElement>("#lightning-replay");
   const note = document.querySelector<HTMLElement>("#lightning-note");
-  if (!stage || !strikeButton || !replayButton || !note) return;
-  const stageEl = stage;
+  if (!bolt || !bloom || !core || !branch || !flash || !halo) return;
+  if (!strikeButton || !replayButton || !note) return;
+  const boltEl = bolt;
+  const bloomEl = bloom;
+  const coreEl = core;
+  const branchEl = branch;
+  const flashEl = flash;
+  const haloEl = halo;
+  const strikeEl = strikeButton;
+  const replayEl = replayButton;
   const noteEl = note;
-  const replayButtonEl = replayButton;
 
-  function flash(slow: boolean): void {
-    stageEl.classList.remove("flash", "flash-slow");
-    // Force a reflow so re-adding the class restarts the animation.
-    void stageEl.offsetWidth;
-    stageEl.classList.add(slow ? "flash-slow" : "flash");
-    noteEl.textContent = slow
-      ? "Stretched to a second and a half. Still nothing in the middle to hold onto."
-      : "That took under a fifth of a second. Hit replay to look slower.";
-    replayButtonEl.disabled = false;
+  // Three flashes inside a quarter-second is at the WCAG 2.3.1 limit, so the
+  // button locks until the sky is dark again: mashing it can't stack strikes
+  // into a strobe, and you can't hold two bolts at once anyway.
+  const calm = window.matchMedia("(prefers-reduced-motion: reduce)");
+  let frame: number | undefined;
+  let safety: number | undefined;
+
+  function paint(level: number): void {
+    boltEl.style.opacity = level.toFixed(3);
+    flashEl.style.opacity = (level * (calm.matches ? 0.12 : 0.4)).toFixed(3);
+    haloEl.style.opacity = (level * 0.65).toFixed(3);
   }
 
-  strikeButton.addEventListener("click", () => flash(false));
-  replayButton.addEventListener("click", () => {
+  // Every exit from a strike goes through here, so the two buttons can't be
+  // left disabled by one: requestAnimationFrame is suspended in a backgrounded
+  // tab, and a strike fired just before a tab switch would otherwise never
+  // reach its last frame.
+  function finish(): void {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    if (safety !== undefined) window.clearTimeout(safety);
+    frame = undefined;
+    safety = undefined;
+    paint(0);
+    strikeEl.disabled = false;
+    replayEl.disabled = false;
+  }
+
+  function play(rate: number, message: string): void {
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    if (safety !== undefined) window.clearTimeout(safety);
+    const { channel, forks, midX } = drawBolt();
+    bloomEl.setAttribute("d", `${channel} ${forks}`.trim());
+    coreEl.setAttribute("d", channel);
+    branchEl.setAttribute("d", forks);
+    haloEl.setAttribute("cx", midX.toFixed(1));
+
+    // Reduced motion gets the same bolt with the flicker taken out: one slow
+    // swell instead of three strokes, and a dimmed sky.
+    const stretched = calm.matches ? 0.35 : rate;
+    const duration = LIGHTNING_MS / stretched;
+    const started = performance.now();
+    strikeEl.disabled = true;
+    replayEl.disabled = true;
+    noteEl.textContent = message;
+
+    const step = (now: number): void => {
+      const elapsed = now - started;
+      const t = elapsed * stretched;
+      paint(calm.matches ? Math.sin((elapsed / duration) * Math.PI) * 0.9 : boltIntensity(t));
+      if (elapsed < duration) {
+        frame = requestAnimationFrame(step);
+        return;
+      }
+      finish();
+    };
+    frame = requestAnimationFrame(step);
+    // Wall clock, which keeps running when the frame clock doesn't.
+    safety = window.setTimeout(finish, duration + 150);
+  }
+
+  strikeEl.addEventListener("click", () => {
+    play(1, calm.matches
+      ? "Your system asks for reduced motion, so this one swells instead of flickering. Still gone."
+      : "Three return strokes in under three tenths of a second. Hit replay to look slower.");
+  });
+
+  replayEl.addEventListener("click", () => {
     tally();
-    flash(true);
+    play(0.125, "Eight times slower, same event. The flicker just gets wider — there was never a middle in it.");
   });
 }
 

@@ -331,13 +331,25 @@ button:hover:not(:disabled) {
 
 /* Shadow */
 .shadow-stage {
+  /* The lamp's position, shared between the paint here and the geometry in
+     main.ts — JS writes these two and everything else follows. */
+  --light-x: 20%;
+  --light-y: 16%;
+
   position: relative;
-  height: 8rem;
+  height: 11rem;
   border: 1px solid var(--line);
   border-radius: 0.5rem;
   overflow: hidden;
-  background: var(--cream);
   margin-bottom: 0.5rem;
+  background:
+    radial-gradient(
+      14rem 12rem at var(--light-x) var(--light-y),
+      #fffaea 0%,
+      #f2e8cd 38%,
+      #e4dabb00 78%
+    ),
+    linear-gradient(180deg, #e7dfc7 0%, #ddd4b8 62%, #d3c9a9 100%);
 }
 
 .shadow-stage:focus-visible {
@@ -345,39 +357,70 @@ button:hover:not(:disabled) {
   outline-offset: 2px;
 }
 
-.shadow-object {
+/* The floor plane. Its top edge is the horizon the object stands on, which is
+   also the line the cast shadow lies along. */
+.shadow-floor {
   position: absolute;
-  bottom: 0.5rem;
-  left: 50%;
-  width: 2rem;
-  height: 3.5rem;
-  transform: translateX(-50%);
-  background: var(--ink);
-  border-radius: 0.3rem;
+  inset: auto 0 0;
+  height: 2.9rem;
+  border-top: 1px solid #786a4638;
+  background:
+    linear-gradient(180deg, #7f7048 0%, #7f704814 34%, #fff6d80f 100%);
+  opacity: 0.45;
 }
 
-.shadow-cast {
+/* No viewBox: user units are CSS pixels, so main.ts can project in the same
+   coordinates it measures the object and the lamp in. */
+.shadow-canvas {
   position: absolute;
-  bottom: 0.35rem;
-  left: 50%;
-  width: 2.2rem;
-  height: 0.6rem;
-  transform: translateX(-50%);
-  background: var(--ink-soft);
-  opacity: 0.35;
-  border-radius: 50%;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#shadow-contact {
+  fill: #14110866;
+}
+
+#shadow-cast {
+  fill: #0000;
+  pointer-events: fill;
   cursor: pointer;
+}
+
+.shadow-object {
+  position: absolute;
+  bottom: 1.6rem;
+  left: 50%;
+  width: 2.1rem;
+  height: 3.7rem;
+  transform: translateX(-50%);
+  border-radius: 0.3rem 0.3rem 0.12rem 0.12rem;
+
+  /* --lit-angle points away from the lamp, so the face turned towards it keeps
+     the highlight as the light swings. */
+  background: linear-gradient(var(--lit-angle, 90deg), #7d735b 0%, #443d2c 45%, #16140e 100%);
+  box-shadow: inset 0 -0.4rem 0.7rem #0000004d;
 }
 
 .shadow-light {
   position: absolute;
-  top: 0.5rem;
-  left: 20%;
-  width: 1.2rem;
-  height: 1.2rem;
-  transform: translateX(-50%);
+  top: var(--light-y);
+  left: var(--light-x);
+  width: 1.15rem;
+  height: 1.15rem;
+  transform: translate(-50%, -50%);
   border-radius: 50%;
-  background: radial-gradient(circle, #ffe9a8, #ffcf5a99);
+  background: radial-gradient(circle at 50% 42%, #fffdf4 0%, #ffe9a8 46%, #f5bf3c 100%);
+  box-shadow:
+    0 0 0.55rem 0.12rem #ffd76ea6,
+    0 0 2.4rem 0.9rem #ffcd5a45;
+  cursor: grab;
+}
+
+.shadow-stage:active .shadow-light {
+  cursor: grabbing;
 }
 
 /* Dew */
@@ -425,29 +468,46 @@ button:hover:not(:disabled) {
 
 /* Lightning */
 .lightning-stage {
-  height: 6rem;
+  position: relative;
+  height: clamp(7rem, 26vw, 9.5rem);
   border-radius: 0.5rem;
-  background: linear-gradient(180deg, #1a1730, #0c0a18);
+  overflow: hidden;
+  background: #08070f;
   margin-bottom: 0.5rem;
 }
 
-.lightning-stage.flash {
-  animation: strike 0.18s ease;
+.lightning-sky {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.lightning-stage.flash-slow {
-  animation: strike 1.5s ease;
+/* One channel drawn three times: a wide blurred bloom for the air around it, a
+   thin bright core, and hairline forks. Opacity of the whole group is animated
+   in main.ts, so the three stay locked to one another. */
+#lightning-bloom-path,
+#lightning-branch-path,
+#lightning-core-path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-@keyframes strike {
-  0%,
-  100% {
-    background: linear-gradient(180deg, #1a1730, #0c0a18);
-  }
+#lightning-bloom-path {
+  stroke: #93a0ff;
+  stroke-width: 6;
+  opacity: 0.8;
+}
 
-  50% {
-    background: #f6f3ff;
-  }
+#lightning-branch-path {
+  stroke: #d3d8ff;
+  stroke-width: 1.1;
+  opacity: 0.85;
+}
+
+#lightning-core-path {
+  stroke: #fdfcff;
+  stroke-width: 1.9;
 }
 
 .outro {
