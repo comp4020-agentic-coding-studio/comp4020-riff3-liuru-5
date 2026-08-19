@@ -5,11 +5,30 @@
 // the thing in the first place.
 
 const holdCountEl = document.querySelector<HTMLElement>("#hold-count");
+const letGoCountEl = document.querySelector<HTMLElement>("#let-go-count");
 let holdCount = 0;
+let letGoCount = 0;
 
 function tally(): void {
   holdCount += 1;
   if (holdCountEl) holdCountEl.textContent = String(holdCount);
+}
+
+function tallyLetGo(): void {
+  letGoCount += 1;
+  if (letGoCountEl) letGoCountEl.textContent = String(letGoCount);
+}
+
+// Wires a station's "Let it be" button: it never touches the station's own
+// state, only reports that the visitor chose not to grasp this time.
+function initLetGo(buttonId: string, noteId: string, message: string): void {
+  const button = document.querySelector<HTMLButtonElement>(`#${buttonId}`);
+  const note = document.querySelector<HTMLElement>(`#${noteId}`);
+  if (!button || !note) return;
+  button.addEventListener("click", () => {
+    tallyLetGo();
+    note.textContent = message;
+  });
 }
 
 const DREAM_WORDS = ["You", "are", "standing", "in", "a", "familiar", "room."];
@@ -301,3 +320,10 @@ initBubble();
 initShadow();
 initDew();
 initLightning();
+
+initLetGo("dream-let-go", "dream-note", "You didn't reach for a single word. It dissolved on schedule either way.");
+initLetGo("illusion-let-go", "illusion-note", "You didn't check the back. It was never solid, checked or not.");
+initLetGo("bubble-let-go", "bubble-note", "You didn't hold the button. Nothing grew, and nothing needed to pop.");
+initLetGo("shadow-let-go", "shadow-note", "You didn't grab at it. It kept following the light without you.");
+initLetGo("dew-let-go", "dew-note", "You didn't reach for the freeze button. It was always going to go by sunrise.");
+initLetGo("lightning-let-go", "lightning-note", "You didn't ask for the replay. It was already over either way.");

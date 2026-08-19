@@ -54,7 +54,8 @@ nav a:focus-visible {
   color: var(--ink-soft);
 }
 
-#hold-count {
+#hold-count,
+#let-go-count {
   font-weight: 700;
   color: var(--vermilion-dim);
 }
@@ -133,6 +134,16 @@ button:focus-visible {
 
 button:hover:not(:disabled) {
   background: var(--vermilion-dim);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--vermilion-dim);
+}
+
+.btn-quiet:hover:not(:disabled) {
+  background: var(--line);
+  color: var(--ink);
 }
 
 .station-note {

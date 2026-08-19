@@ -61,4 +61,17 @@ describe("the six as-ifs", () => {
       expect(note?.getAttribute("role"), `#${station}-note`).toBe("status");
     }
   });
+
+  it("gives every station a way to not grasp, alongside the way to hold on", () => {
+    for (const station of STATIONS) {
+      const button = doc.querySelector(`#${station}-let-go`);
+      expect(button, `#${station}-let-go is missing`).toBeTruthy();
+      expect(button?.getAttribute("type")).toBe("button");
+    }
+  });
+
+  it("keeps the let-go tally separate from the hold tally, starting at zero", () => {
+    const counter = doc.querySelector("#let-go-count");
+    expect(counter?.textContent?.trim()).toBe("0");
+  });
 });
