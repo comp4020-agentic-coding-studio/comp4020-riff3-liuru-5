@@ -57,9 +57,13 @@ function initDream(): void {
 
   function swapWord(span: HTMLElement): void {
     tally();
-    const replacement = DREAM_SWAPS[Math.floor(Math.random() * DREAM_SWAPS.length)] ?? "something else";
-    span.textContent = replacement;
-    span.classList.add("swapped");
+    span.classList.add("reforming");
+    window.setTimeout(() => {
+      const replacement = DREAM_SWAPS[Math.floor(Math.random() * DREAM_SWAPS.length)] ?? "something else";
+      span.textContent = replacement;
+      span.classList.remove("reforming");
+      span.classList.add("swapped");
+    }, 200);
   }
 
   function makeWordSpan(word: string): HTMLElement {
@@ -69,6 +73,7 @@ function initDream(): void {
     span.tabIndex = 0;
     span.setAttribute("role", "button");
     span.setAttribute("aria-label", `Try to hold the word "${word}"`);
+    span.addEventListener("animationend", () => span.classList.add("risen"), { once: true });
     span.addEventListener("click", () => swapWord(span));
     span.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -115,6 +120,10 @@ function initIllusion(): void {
     tally();
     flipped = !flipped;
     card.classList.toggle("flipped", flipped);
+    card.classList.remove("glitching");
+    void card.offsetWidth;
+    card.classList.add("glitching");
+    window.setTimeout(() => card.classList.remove("glitching"), 350);
     note.textContent = flipped
       ? "The far side isn't there. It never needed one to look solid from here."
       : "From the front, it's convincing again.";
