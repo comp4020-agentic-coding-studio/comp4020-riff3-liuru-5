@@ -459,9 +459,14 @@ button:hover:not(:disabled) {
 
 .outro-lead {
   font-size: 1.3rem;
+  font-weight: 600;
   font-style: italic;
   color: var(--vermilion-dim);
   margin: 0 0 1.5rem;
+  padding: 1.25rem 1.5rem;
+  border-left: 4px solid var(--vermilion);
+  border-radius: 0.4rem;
+  background: rgb(163 52 31 / 10%);
 }
 
 @media (width <= 480px) {
