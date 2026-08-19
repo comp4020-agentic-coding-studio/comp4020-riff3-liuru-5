@@ -457,6 +457,13 @@ button:hover:not(:disabled) {
   color: var(--ink-soft);
 }
 
+.outro-lead {
+  font-size: 1.3rem;
+  font-style: italic;
+  color: var(--vermilion-dim);
+  margin: 0 0 1.5rem;
+}
+
 @media (width <= 480px) {
   main {
     padding: 1.5rem 1rem 3rem;
